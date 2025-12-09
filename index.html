@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>📦 Smart Pallet Dashboard</title>
+    <style>
+      body {
+        font-family: Arial;
+        margin: 20px 40px;
+        background: #f4f6f8;
+      }
+
+      h1 {
+        text-align: center;
+        margin-bottom: 10px;
+      }
+
+      .filters {
+        display: flex;
+        gap: 20px;
+        justify-content: center;
+        margin: 10px 0 15px 0;
+      }
+
+      select, button {
+        padding: 6px 10px;
+        border-radius: 5px;
+        border: 1px solid #aaa;
+      }
+
+      button {
+        background: #333;
+        color: #fff;
+        cursor: pointer;
+      }
+
+      button:hover {
+        background: #444;
+      }
+
+      #chartContainer {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 280px; /* smaller chart area */
+        margin: 15px 0;
+      }
+
+      #tempChart {
+        max-width: 80%;
+        height: 240px !important; /* smaller height */
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 10px;
+      }
+
+      th, td {
+        border: 1px solid #ccc;
+        padding: 8px;
+        text-align: center;
+      }
+
+      th {
+        background-color: #333;
+        color: #fff;
+      }
+
+      tr:nth-child(even) {
+        background: #eee;
+      }
+
+      /* Color-coded alerts */
+      .red { background-color: #ffcccc !important; }
+      .yellow { background-color: #fff6b3 !important; }
+      .green { background-color: #c9f7c3 !important; }
+      .blue { background-color: #cce5ff !important; }
+    </style>
+  </head>
+  <body>
+    <h1>📦 Smart Pallet Dashboard</h1>
+
+    <!-- Filters -->
+    <div class="filters">
+      <select id="locationFilter">
+        <option value="">All Locations</option>
+        <option value="A">Location A</option>
+        <option value="B">Location B</option>
+        <option value="C">Location C</option>
+      </select>
+
+      <select id="palletFilter">
+        <option value="">All Pallets</option>
+      </select>
+
+      <button onclick="resetFilters()">Reset Filters</button>
+    </div>
+
+    <!-- Chart -->
+    <div id="chartContainer">
+      <canvas id="tempChart"></canvas>
+    </div>
+
+    <!-- Table -->
+    <table>
+      <thead>
+        <tr>
+          <th>Pallet ID</th>
+          <th>Location</th>
+          <th>Temperature (°C)</th>
+          <th>Humidity (%)</th>
+          <th>Timestamp</th>
+        </tr>
+      </thead>
+      <tbody id="palletTable"></tbody>
+    </table>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+      let tempChart = null;
+      let allData = [];
+
+      async function loadData() {
+        const res = await fetch("/api/pallets");
+        const data = await res.json();
+        allData = data;
+        populatePalletFilter(data);
+        renderTable();
+        drawChart(data);
+      }
+
+      // --- Dropdown filtering ---
+      function populatePalletFilter(data) {
+        const palletSelect = document.getElementById("palletFilter");
+        const uniquePallets = [...new Set(data.map(r => r.PalletID))];
+        palletSelect.innerHTML = '<option value="">All Pallets</option>';
+        uniquePallets.forEach(pid => {
+          const opt = document.createElement("option");
+          opt.value = pid;
+          opt.textContent = pid;
+          palletSelect.appendChild(opt);
+        });
+      }
+
+      function resetFilters() {
+        document.getElementById("locationFilter").value = "";
+        document.getElementById("palletFilter").value = "";
+        renderTable();
+      }
+
+      function renderTable() {
+        const table = document.getElementById("palletTable");
+        table.innerHTML = "";
+
+        const locFilter = document.getElementById("locationFilter").value;
+        const palletFilter = document.getElementById("palletFilter").value;
+
+        const filtered = allData.filter(r =>
+          (!locFilter || r.Location === locFilter) &&
+          (!palletFilter || r.PalletID === palletFilter)
+        );
+
+        filtered.forEach(row => {
+          let rowColor = "";
+          if (row.Temperature > 30) rowColor = "red";
+          else if (row.Humidity < 30) rowColor = "yellow";
+          else if (row.Temperature < 20) rowColor = "blue";
+          else if (row.Temperature >= 20 && row.Temperature <= 25) rowColor = "green";
+
+          const tr = document.createElement("tr");
+          tr.className = rowColor;
+          tr.innerHTML = `
+            <td>${row.PalletID}</td>
+            <td>${row.Location}</td>
+            <td>${row.Temperature.toFixed(1)}</td>
+            <td>${row.Humidity.toFixed(1)}</td>
+            <td>${new Date(row.Timestamp).toLocaleString()}</td>
+          `;
+          table.appendChild(tr);
+        });
+      }
+
+      function drawChart(data) {
+        const ctx = document.getElementById("tempChart").getContext("2d");
+        const labels = data.map(r => new Date(r.Timestamp).toLocaleTimeString());
+        const temps = data.map(r => r.Temperature);
+        const hums = data.map(r => r.Humidity);
+
+        if (tempChart) tempChart.destroy();
+
+        tempChart = new Chart(ctx, {
+          type: "line",
+          data: {
+            labels: labels,
+            datasets: [
+              {
+                label: "Temperature (°C)",
+                data: temps,
+                borderColor: "orange",
+                backgroundColor: "rgba(255,165,0,0.2)",
+                yAxisID: "y1",
+              },
+              {
+                label: "Humidity (%)",
+                data: hums,
+                borderColor: "blue",
+                backgroundColor: "rgba(0,0,255,0.1)",
+                yAxisID: "y2",
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+              y1: {
+                type: "linear",
+                position: "left",
+                title: { display: true, text: "Temperature °C" },
+              },
+              y2: {
+                type: "linear",
+                position: "right",
+                title: { display: true, text: "Humidity %" },
+                grid: { drawOnChartArea: false },
+              },
+            },
+            plugins: {
+              legend: { position: "top" },
+            },
+          },
+        });
+      }
+
+      document.getElementById("locationFilter").addEventListener("change", renderTable);
+      document.getElementById("palletFilter").addEventListener("change", renderTable);
+
+      loadData();
+      setInterval(loadData, 3000); // auto-refresh every 3s
+    </script>
+  </body>
+</html>
+
